@@ -7,6 +7,7 @@ Lightweight online 2D CAD (HTML + JavaScript) for creating:
 - arcs
 - ellipses
 - elliptic arcs
+- bezier splines
 - dimensions
 - constraints
 
@@ -35,6 +36,7 @@ http://localhost:8080
 - **Arc (3 pts)**: three clicks (start, middle, end).
 - **Ellipse**: three clicks (center, major radius point, minor radius point).
 - **Elliptic Arc**: four clicks (center, major radius point, minor radius point, end point).
+- **Bezier Spline**: four clicks (start point, control point 1, control point 2, end point).
 
 ## Dimensions
 

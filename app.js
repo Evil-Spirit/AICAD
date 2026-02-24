@@ -49,6 +49,30 @@ function normalizeAngle(a) {
   return result;
 }
 
+function cubicBezierPoint(p0, p1, p2, p3, t) {
+  const mt = 1 - t;
+  const mt2 = mt * mt;
+  const t2 = t * t;
+  const a = mt2 * mt;
+  const b = 3 * mt2 * t;
+  const c = 3 * mt * t2;
+  const d = t2 * t;
+  return {
+    x: a * p0.x + b * p1.x + c * p2.x + d * p3.x,
+    y: a * p0.y + b * p1.y + c * p2.y + d * p3.y,
+  };
+}
+
+function bezierDistanceToPoint(bezier, pt) {
+  let best = Infinity;
+  for (let i = 0; i <= 40; i++) {
+    const t = i / 40;
+    const s = cubicBezierPoint(bezier.p0, bezier.p1, bezier.p2, bezier.p3, t);
+    best = Math.min(best, distance(s, pt));
+  }
+  return best;
+}
+
 function toCanvasCoords(event) {
   const rect = canvas.getBoundingClientRect();
   const raw = {
@@ -136,6 +160,30 @@ function drawEntity(entity, selected = false) {
     ctx.beginPath();
     ctx.ellipse(entity.c.x, entity.c.y, entity.rx, entity.ry, entity.rotation, start, end, entity.ccw || false);
     ctx.stroke();
+  }
+
+  if (entity.type === 'bezier') {
+    ctx.beginPath();
+    ctx.moveTo(entity.p0.x, entity.p0.y);
+    ctx.bezierCurveTo(entity.p1.x, entity.p1.y, entity.p2.x, entity.p2.y, entity.p3.x, entity.p3.y);
+    ctx.stroke();
+    if (selected) {
+      ctx.save();
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(entity.p0.x, entity.p0.y);
+      ctx.lineTo(entity.p1.x, entity.p1.y);
+      ctx.lineTo(entity.p2.x, entity.p2.y);
+      ctx.lineTo(entity.p3.x, entity.p3.y);
+      ctx.stroke();
+      drawPoint(entity.p0, true);
+      drawPoint(entity.p1, true);
+      drawPoint(entity.p2, true);
+      drawPoint(entity.p3, true);
+      ctx.restore();
+    }
   }
 
   ctx.restore();
@@ -235,6 +283,38 @@ function drawTempGeometry() {
     }
   }
 
+  if (currentTool === 'bezier') {
+    if (tempPoints.length === 1) {
+      ctx.beginPath();
+      ctx.moveTo(tempPoints[0].x, tempPoints[0].y);
+      ctx.lineTo(mouse.x, mouse.y);
+      ctx.stroke();
+    }
+    if (tempPoints.length === 2) {
+      ctx.beginPath();
+      ctx.moveTo(tempPoints[0].x, tempPoints[0].y);
+      ctx.lineTo(tempPoints[1].x, tempPoints[1].y);
+      ctx.lineTo(mouse.x, mouse.y);
+      ctx.stroke();
+    }
+    if (tempPoints.length === 3) {
+      const p0 = tempPoints[0];
+      const p1 = tempPoints[1];
+      const p2 = tempPoints[2];
+      const p3 = mouse;
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p3.x, p3.y);
+      ctx.stroke();
+    }
+  }
+
   ctx.restore();
 }
 
@@ -320,6 +400,8 @@ function nearestEntity(x, y) {
     } else if (e.type === 'ellipse' || e.type === 'ellipticArc') {
       d = distance(e.c, { x, y }) / Math.max(e.rx, e.ry);
       d = Math.abs(d - 1) * Math.max(e.rx, e.ry);
+    } else if (e.type === 'bezier') {
+      d = bezierDistanceToPoint(e, { x, y });
     }
 
     if (d < bestDist) {
@@ -612,6 +694,24 @@ function onCanvasClick(event) {
         a0: normalizeAngle(angle(c, major)),
         a1: normalizeAngle(angle(c, end)),
         ccw: false,
+      });
+      tempPoints = [];
+      solveConstraints();
+    }
+    render();
+    return;
+  }
+
+  if (currentTool === 'bezier') {
+    tempPoints.push(p);
+    if (tempPoints.length === 4) {
+      addEntity({
+        id: nextId('bezier'),
+        type: 'bezier',
+        p0: tempPoints[0],
+        p1: tempPoints[1],
+        p2: tempPoints[2],
+        p3: tempPoints[3],
       });
       tempPoints = [];
       solveConstraints();
