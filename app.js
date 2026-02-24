@@ -99,6 +99,74 @@ function polylineDistanceToPoint(points, pt) {
   return best;
 }
 
+function segmentDistanceToPoint(a, b, pt) {
+  const vx = b.x - a.x;
+  const vy = b.y - a.y;
+  const len2 = vx * vx + vy * vy;
+  if (len2 === 0) return distance(a, pt);
+  const t = Math.max(0, Math.min(1, ((pt.x - a.x) * vx + (pt.y - a.y) * vy) / len2));
+  return distance({ x: a.x + t * vx, y: a.y + t * vy }, pt);
+}
+
+function buildStickmanGeometry(headCenter, scalePoint) {
+  const size = Math.max(14, distance(headCenter, scalePoint));
+  const headRadius = size * 0.32;
+  const neck = { x: headCenter.x, y: headCenter.y + headRadius };
+  const pelvis = { x: headCenter.x, y: neck.y + size * 1.15 };
+  const armY = neck.y + size * 0.45;
+  const leftHand = { x: headCenter.x - size * 0.7, y: armY + size * 0.2 };
+  const rightHand = { x: headCenter.x + size * 0.7, y: armY + size * 0.2 };
+  const leftFoot = { x: headCenter.x - size * 0.5, y: pelvis.y + size * 0.95 };
+  const rightFoot = { x: headCenter.x + size * 0.5, y: pelvis.y + size * 0.95 };
+  return {
+    headCenter,
+    headRadius,
+    neck,
+    pelvis,
+    leftHand,
+    rightHand,
+    leftFoot,
+    rightFoot,
+  };
+}
+
+function drawStickmanShape(stickman) {
+  const g = buildStickmanGeometry(stickman.headCenter, stickman.scalePoint);
+  ctx.beginPath();
+  ctx.arc(g.headCenter.x, g.headCenter.y, g.headRadius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(g.neck.x, g.neck.y);
+  ctx.lineTo(g.pelvis.x, g.pelvis.y);
+  ctx.moveTo(g.neck.x, g.neck.y + (g.pelvis.y - g.neck.y) * 0.35);
+  ctx.lineTo(g.leftHand.x, g.leftHand.y);
+  ctx.moveTo(g.neck.x, g.neck.y + (g.pelvis.y - g.neck.y) * 0.35);
+  ctx.lineTo(g.rightHand.x, g.rightHand.y);
+  ctx.moveTo(g.pelvis.x, g.pelvis.y);
+  ctx.lineTo(g.leftFoot.x, g.leftFoot.y);
+  ctx.moveTo(g.pelvis.x, g.pelvis.y);
+  ctx.lineTo(g.rightFoot.x, g.rightFoot.y);
+  ctx.stroke();
+}
+
+function stickmanDistanceToPoint(stickman, pt) {
+  const g = buildStickmanGeometry(stickman.headCenter, stickman.scalePoint);
+  let best = Math.abs(distance(g.headCenter, pt) - g.headRadius);
+  const shoulder = { x: g.neck.x, y: g.neck.y + (g.pelvis.y - g.neck.y) * 0.35 };
+  const segments = [
+    [g.neck, g.pelvis],
+    [shoulder, g.leftHand],
+    [shoulder, g.rightHand],
+    [g.pelvis, g.leftFoot],
+    [g.pelvis, g.rightFoot],
+  ];
+  for (const [a, b] of segments) {
+    best = Math.min(best, segmentDistanceToPoint(a, b, pt));
+  }
+  return best;
+}
+
 function bezierDistanceToPoint(bezier, pt) {
   let best = Infinity;
   for (let i = 0; i <= 40; i++) {
@@ -233,6 +301,14 @@ function drawEntity(entity, selected = false) {
         ctx.lineTo(points[i].x, points[i].y);
       }
       ctx.stroke();
+    }
+  }
+
+  if (entity.type === 'stickman') {
+    drawStickmanShape(entity);
+    if (selected) {
+      drawPoint(entity.headCenter, true);
+      drawPoint(entity.scalePoint, true);
     }
   }
 
@@ -380,6 +456,10 @@ function drawTempGeometry() {
     }
   }
 
+  if (currentTool === 'stickman' && tempPoints.length === 1) {
+    drawStickmanShape({ headCenter: tempPoints[0], scalePoint: mouse });
+  }
+
   ctx.restore();
 }
 
@@ -470,6 +550,8 @@ function nearestEntity(x, y) {
     } else if (e.type === 'dragon') {
       const points = Array.isArray(e.points) ? e.points : dragonCurvePoints(e.p0, e.p1, e.iterations || 10);
       d = polylineDistanceToPoint(points, { x, y });
+    } else if (e.type === 'stickman') {
+      d = stickmanDistanceToPoint(e, { x, y });
     }
 
     if (d < bestDist) {
@@ -799,6 +881,22 @@ function onCanvasClick(event) {
         p1: tempPoints[1],
         iterations,
         points: dragonCurvePoints(tempPoints[0], tempPoints[1], iterations),
+      });
+      tempPoints = [];
+      solveConstraints();
+    }
+    render();
+    return;
+  }
+
+  if (currentTool === 'stickman') {
+    tempPoints.push(p);
+    if (tempPoints.length === 2) {
+      addEntity({
+        id: nextId('stickman'),
+        type: 'stickman',
+        headCenter: tempPoints[0],
+        scalePoint: tempPoints[1],
       });
       tempPoints = [];
       solveConstraints();

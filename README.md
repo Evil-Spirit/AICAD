@@ -9,6 +9,7 @@ Lightweight online 2D CAD (HTML + JavaScript) for creating:
 - elliptic arcs
 - bezier splines
 - dragon curves
+- stickman figures
 - dimensions
 - constraints
 
@@ -39,6 +40,7 @@ http://localhost:8080
 - **Elliptic Arc**: four clicks (center, major radius point, minor radius point, end point).
 - **Bezier Spline**: four clicks (start point, control point 1, control point 2, end point).
 - **Dragon**: two clicks (start and end), recursion depth is controlled by `Dragon iters`.
+- **Человечек**: two clicks (head center and scale point), creates a schematic human from one circle and lines.
 
 ## Dimensions
 
