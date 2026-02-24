@@ -104,6 +104,16 @@ h2 {
   color: var(--muted);
 }
 
+.chk input[type='number'] {
+  width: 100%;
+  margin-top: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
 .canvas-wrap {
   position: relative;
   background: #0b1223;

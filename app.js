@@ -5,6 +5,7 @@ const statusbar = document.getElementById('statusbar');
 const toolButtons = [...document.querySelectorAll('.tool')];
 const showGridEl = document.getElementById('showGrid');
 const snapGridEl = document.getElementById('snapGrid');
+const dragonIterationsEl = document.getElementById('dragonIterations');
 const selectionInfo = document.getElementById('selectionInfo');
 const entityList = document.getElementById('entityList');
 const dimensionList = document.getElementById('dimensionList');
@@ -61,6 +62,41 @@ function cubicBezierPoint(p0, p1, p2, p3, t) {
     x: a * p0.x + b * p1.x + c * p2.x + d * p3.x,
     y: a * p0.y + b * p1.y + c * p2.y + d * p3.y,
   };
+}
+
+function dragonCurvePoints(p0, p1, iterations) {
+  const points = [p0];
+
+  function recurse(a, b, depth, sign) {
+    if (depth === 0) {
+      points.push({ x: b.x, y: b.y });
+      return;
+    }
+    const mx = (a.x + b.x) / 2 + sign * (b.y - a.y) / 2;
+    const my = (a.y + b.y) / 2 - sign * (b.x - a.x) / 2;
+    const m = { x: mx, y: my };
+    recurse(a, m, depth - 1, 1);
+    recurse(m, b, depth - 1, -1);
+  }
+
+  recurse(p0, p1, Math.max(0, Math.floor(iterations)), 1);
+  return points;
+}
+
+function polylineDistanceToPoint(points, pt) {
+  let best = Infinity;
+  for (let i = 0; i < points.length - 1; i++) {
+    const A = points[i];
+    const B = points[i + 1];
+    const vx = B.x - A.x;
+    const vy = B.y - A.y;
+    const len2 = vx * vx + vy * vy;
+    if (len2 === 0) continue;
+    const t = Math.max(0, Math.min(1, ((pt.x - A.x) * vx + (pt.y - A.y) * vy) / len2));
+    const proj = { x: A.x + t * vx, y: A.y + t * vy };
+    best = Math.min(best, distance(proj, pt));
+  }
+  return best;
 }
 
 function bezierDistanceToPoint(bezier, pt) {
@@ -183,6 +219,20 @@ function drawEntity(entity, selected = false) {
       drawPoint(entity.p2, true);
       drawPoint(entity.p3, true);
       ctx.restore();
+    }
+  }
+
+  if (entity.type === 'dragon') {
+    const points = Array.isArray(entity.points)
+      ? entity.points
+      : dragonCurvePoints(entity.p0, entity.p1, entity.iterations || 10);
+    if (points.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.stroke();
     }
   }
 
@@ -315,6 +365,21 @@ function drawTempGeometry() {
     }
   }
 
+  if (currentTool === 'dragon') {
+    if (tempPoints.length === 1) {
+      const iterations = Math.max(1, Math.min(16, Number(dragonIterationsEl.value) || 10));
+      const previewPoints = dragonCurvePoints(tempPoints[0], mouse, iterations);
+      if (previewPoints.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(previewPoints[0].x, previewPoints[0].y);
+        for (let i = 1; i < previewPoints.length; i++) {
+          ctx.lineTo(previewPoints[i].x, previewPoints[i].y);
+        }
+        ctx.stroke();
+      }
+    }
+  }
+
   ctx.restore();
 }
 
@@ -402,6 +467,9 @@ function nearestEntity(x, y) {
       d = Math.abs(d - 1) * Math.max(e.rx, e.ry);
     } else if (e.type === 'bezier') {
       d = bezierDistanceToPoint(e, { x, y });
+    } else if (e.type === 'dragon') {
+      const points = Array.isArray(e.points) ? e.points : dragonCurvePoints(e.p0, e.p1, e.iterations || 10);
+      d = polylineDistanceToPoint(points, { x, y });
     }
 
     if (d < bestDist) {
@@ -712,6 +780,25 @@ function onCanvasClick(event) {
         p1: tempPoints[1],
         p2: tempPoints[2],
         p3: tempPoints[3],
+      });
+      tempPoints = [];
+      solveConstraints();
+    }
+    render();
+    return;
+  }
+
+  if (currentTool === 'dragon') {
+    tempPoints.push(p);
+    if (tempPoints.length === 2) {
+      const iterations = Math.max(1, Math.min(16, Number(dragonIterationsEl.value) || 10));
+      addEntity({
+        id: nextId('dragon'),
+        type: 'dragon',
+        p0: tempPoints[0],
+        p1: tempPoints[1],
+        iterations,
+        points: dragonCurvePoints(tempPoints[0], tempPoints[1], iterations),
       });
       tempPoints = [];
       solveConstraints();

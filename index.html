@@ -30,6 +30,7 @@
       <button data-tool="ellipse" class="tool">Ellipse</button>
       <button data-tool="ellipticArc" class="tool">Elliptic Arc</button>
       <button data-tool="bezier" class="tool">Bezier Spline</button>
+      <button data-tool="dragon" class="tool">Dragon</button>
 
       <h2>Dimensions</h2>
       <button data-tool="dimLength" class="tool">Length</button>
@@ -49,6 +50,10 @@
       <h2>View</h2>
       <label class="chk"><input id="showGrid" type="checkbox" checked /> Show grid</label>
       <label class="chk"><input id="snapGrid" type="checkbox" checked /> Snap to grid</label>
+      <label class="chk">
+        Dragon iters
+        <input id="dragonIterations" type="number" min="1" max="16" value="10" />
+      </label>
     </aside>
 
     <section class="canvas-wrap">
