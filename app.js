@@ -108,6 +108,58 @@ function segmentDistanceToPoint(a, b, pt) {
   return distance({ x: a.x + t * vx, y: a.y + t * vy }, pt);
 }
 
+function hashString(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function seededRandom(seed) {
+  let s = seed >>> 0;
+  return function next() {
+    s = (1664525 * s + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+function randomPick(arr, randomFn = Math.random) {
+  return arr[Math.floor(randomFn() * arr.length)];
+}
+
+function generateFunnyFace(randomFn = Math.random) {
+  const gender = randomFn() < 0.5 ? 'male' : 'female';
+  const mood = randomPick(['happy', 'kind', 'angry', 'sleepy', 'surprised'], randomFn);
+  const eyes = randomPick(['dot', 'smile', 'angry', 'wide'], randomFn);
+  const mouth = randomPick(['smile', 'wideSmile', 'neutral', 'oh', 'smirk'], randomFn);
+  const hair = gender === 'female'
+    ? randomPick(['long', 'buns', 'ponytail', 'short', 'spiky'], randomFn)
+    : randomPick(['short', 'spiky', 'mohawk', 'bald', 'messy'], randomFn);
+  const hasMoustache = gender === 'male' ? randomFn() < 0.45 : randomFn() < 0.08;
+  const hasBeard = gender === 'male' ? randomFn() < 0.38 : randomFn() < 0.03;
+  const hasFreckles = randomFn() < 0.25;
+  const hasBrows = randomFn() < 0.75;
+  return {
+    gender,
+    mood,
+    eyes,
+    mouth,
+    hair,
+    hasMoustache,
+    hasBeard,
+    hasFreckles,
+    hasBrows,
+  };
+}
+
+function getStickmanFace(stickman) {
+  if (stickman.face) return stickman.face;
+  const rnd = seededRandom(hashString(String(stickman.id || 'stickman')));
+  return generateFunnyFace(rnd);
+}
+
 function buildStickmanGeometry(headCenter, scalePoint) {
   const size = Math.max(14, distance(headCenter, scalePoint));
   const headRadius = size * 0.32;
@@ -130,6 +182,144 @@ function buildStickmanGeometry(headCenter, scalePoint) {
   };
 }
 
+function drawStickmanFace(geo, face) {
+  const r = geo.headRadius;
+  const eyeY = geo.headCenter.y - r * 0.15;
+  const eyeDX = r * 0.42;
+  const leftEye = { x: geo.headCenter.x - eyeDX, y: eyeY };
+  const rightEye = { x: geo.headCenter.x + eyeDX, y: eyeY };
+  const browY = eyeY - r * 0.22;
+  const mouthY = geo.headCenter.y + r * 0.38;
+
+  if (face.hasBrows) {
+    ctx.beginPath();
+    if (face.mood === 'angry') {
+      ctx.moveTo(leftEye.x - r * 0.16, browY + r * 0.08);
+      ctx.lineTo(leftEye.x + r * 0.16, browY - r * 0.05);
+      ctx.moveTo(rightEye.x - r * 0.16, browY - r * 0.05);
+      ctx.lineTo(rightEye.x + r * 0.16, browY + r * 0.08);
+    } else {
+      ctx.moveTo(leftEye.x - r * 0.17, browY);
+      ctx.lineTo(leftEye.x + r * 0.17, browY - r * 0.03);
+      ctx.moveTo(rightEye.x - r * 0.17, browY - r * 0.03);
+      ctx.lineTo(rightEye.x + r * 0.17, browY);
+    }
+    ctx.stroke();
+  }
+
+  ctx.beginPath();
+  if (face.eyes === 'dot') {
+    ctx.arc(leftEye.x, leftEye.y, r * 0.08, 0, Math.PI * 2);
+    ctx.arc(rightEye.x, rightEye.y, r * 0.08, 0, Math.PI * 2);
+  }
+  if (face.eyes === 'smile') {
+    ctx.arc(leftEye.x, leftEye.y, r * 0.14, 0, Math.PI);
+    ctx.arc(rightEye.x, rightEye.y, r * 0.14, 0, Math.PI);
+  }
+  if (face.eyes === 'angry') {
+    ctx.moveTo(leftEye.x - r * 0.14, leftEye.y + r * 0.1);
+    ctx.lineTo(leftEye.x + r * 0.14, leftEye.y - r * 0.08);
+    ctx.moveTo(rightEye.x - r * 0.14, rightEye.y - r * 0.08);
+    ctx.lineTo(rightEye.x + r * 0.14, rightEye.y + r * 0.1);
+  }
+  if (face.eyes === 'wide') {
+    ctx.arc(leftEye.x, leftEye.y, r * 0.11, 0, Math.PI * 2);
+    ctx.arc(rightEye.x, rightEye.y, r * 0.11, 0, Math.PI * 2);
+  }
+  ctx.stroke();
+
+  ctx.beginPath();
+  if (face.mouth === 'smile') {
+    ctx.arc(geo.headCenter.x, mouthY, r * 0.34, 0.15 * Math.PI, 0.85 * Math.PI);
+  }
+  if (face.mouth === 'wideSmile') {
+    ctx.arc(geo.headCenter.x, mouthY, r * 0.38, 0.08 * Math.PI, 0.92 * Math.PI);
+  }
+  if (face.mouth === 'neutral') {
+    ctx.moveTo(geo.headCenter.x - r * 0.24, mouthY);
+    ctx.lineTo(geo.headCenter.x + r * 0.24, mouthY);
+  }
+  if (face.mouth === 'oh') {
+    ctx.arc(geo.headCenter.x, mouthY, r * 0.14, 0, Math.PI * 2);
+  }
+  if (face.mouth === 'smirk') {
+    ctx.moveTo(geo.headCenter.x - r * 0.22, mouthY + r * 0.02);
+    ctx.quadraticCurveTo(geo.headCenter.x + r * 0.03, mouthY - r * 0.14, geo.headCenter.x + r * 0.26, mouthY + r * 0.02);
+  }
+  ctx.stroke();
+
+  if (face.hasFreckles) {
+    const f = r * 0.03;
+    ctx.beginPath();
+    ctx.arc(geo.headCenter.x - r * 0.23, geo.headCenter.y + r * 0.08, f, 0, Math.PI * 2);
+    ctx.arc(geo.headCenter.x - r * 0.16, geo.headCenter.y + r * 0.13, f, 0, Math.PI * 2);
+    ctx.arc(geo.headCenter.x + r * 0.23, geo.headCenter.y + r * 0.08, f, 0, Math.PI * 2);
+    ctx.arc(geo.headCenter.x + r * 0.16, geo.headCenter.y + r * 0.13, f, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.beginPath();
+  const topY = geo.headCenter.y - r * 0.98;
+  if (face.hair === 'short') {
+    ctx.arc(geo.headCenter.x, geo.headCenter.y - r * 0.03, r * 0.98, 1.05 * Math.PI, 1.95 * Math.PI);
+  }
+  if (face.hair === 'long') {
+    ctx.arc(geo.headCenter.x, geo.headCenter.y - r * 0.05, r * 1.04, 1.02 * Math.PI, 1.98 * Math.PI);
+    ctx.moveTo(geo.headCenter.x - r * 0.92, geo.headCenter.y - r * 0.1);
+    ctx.lineTo(geo.headCenter.x - r * 0.86, geo.headCenter.y + r * 0.75);
+    ctx.moveTo(geo.headCenter.x + r * 0.92, geo.headCenter.y - r * 0.1);
+    ctx.lineTo(geo.headCenter.x + r * 0.86, geo.headCenter.y + r * 0.75);
+  }
+  if (face.hair === 'spiky') {
+    for (let i = -3; i <= 3; i++) {
+      const x = geo.headCenter.x + i * (r * 0.24);
+      ctx.moveTo(x - r * 0.09, topY + r * 0.14);
+      ctx.lineTo(x, topY - r * 0.22 - Math.abs(i) * r * 0.02);
+      ctx.lineTo(x + r * 0.09, topY + r * 0.14);
+    }
+  }
+  if (face.hair === 'buns') {
+    ctx.arc(geo.headCenter.x, geo.headCenter.y - r * 0.05, r * 0.95, 1.08 * Math.PI, 1.92 * Math.PI);
+    ctx.moveTo(geo.headCenter.x - r * 1.05, geo.headCenter.y - r * 0.7);
+    ctx.arc(geo.headCenter.x - r * 1.05, geo.headCenter.y - r * 0.7, r * 0.23, 0, Math.PI * 2);
+    ctx.moveTo(geo.headCenter.x + r * 1.05, geo.headCenter.y - r * 0.7);
+    ctx.arc(geo.headCenter.x + r * 1.05, geo.headCenter.y - r * 0.7, r * 0.23, 0, Math.PI * 2);
+  }
+  if (face.hair === 'ponytail') {
+    ctx.arc(geo.headCenter.x, geo.headCenter.y - r * 0.05, r * 0.96, 1.05 * Math.PI, 1.95 * Math.PI);
+    ctx.moveTo(geo.headCenter.x + r * 0.92, geo.headCenter.y - r * 0.25);
+    ctx.quadraticCurveTo(geo.headCenter.x + r * 1.45, geo.headCenter.y + r * 0.12, geo.headCenter.x + r * 0.95, geo.headCenter.y + r * 0.45);
+  }
+  if (face.hair === 'mohawk') {
+    ctx.moveTo(geo.headCenter.x, topY + r * 0.2);
+    ctx.lineTo(geo.headCenter.x, topY - r * 0.35);
+    ctx.lineTo(geo.headCenter.x, topY + r * 0.2);
+  }
+  if (face.hair === 'messy') {
+    for (let i = -2; i <= 2; i++) {
+      const x = geo.headCenter.x + i * r * 0.32;
+      ctx.moveTo(x - r * 0.14, topY + r * 0.18);
+      ctx.quadraticCurveTo(x, topY - r * (0.22 + (i % 2 === 0 ? 0.12 : 0.04)), x + r * 0.14, topY + r * 0.18);
+    }
+  }
+  ctx.stroke();
+
+  if (face.hasMoustache) {
+    const y = geo.headCenter.y + r * 0.2;
+    ctx.beginPath();
+    ctx.moveTo(geo.headCenter.x - r * 0.28, y);
+    ctx.quadraticCurveTo(geo.headCenter.x - r * 0.1, y + r * 0.11, geo.headCenter.x, y);
+    ctx.quadraticCurveTo(geo.headCenter.x + r * 0.1, y + r * 0.11, geo.headCenter.x + r * 0.28, y);
+    ctx.stroke();
+  }
+
+  if (face.hasBeard) {
+    ctx.beginPath();
+    ctx.arc(geo.headCenter.x, geo.headCenter.y + r * 0.16, r * 0.63, 0.2 * Math.PI, 0.8 * Math.PI);
+    ctx.stroke();
+  }
+}
+
 function drawStickmanShape(stickman) {
   const g = buildStickmanGeometry(stickman.headCenter, stickman.scalePoint);
   ctx.beginPath();
@@ -148,6 +338,8 @@ function drawStickmanShape(stickman) {
   ctx.moveTo(g.pelvis.x, g.pelvis.y);
   ctx.lineTo(g.rightFoot.x, g.rightFoot.y);
   ctx.stroke();
+
+  drawStickmanFace(g, getStickmanFace(stickman));
 }
 
 function stickmanDistanceToPoint(stickman, pt) {
@@ -897,6 +1089,7 @@ function onCanvasClick(event) {
         type: 'stickman',
         headCenter: tempPoints[0],
         scalePoint: tempPoints[1],
+        face: generateFunnyFace(),
       });
       tempPoints = [];
       solveConstraints();
