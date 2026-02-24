@@ -23,6 +23,7 @@
     <aside class="toolbar" aria-label="Tools">
       <h2>Draw</h2>
       <button data-tool="select" class="tool active">Select</button>
+      <button data-tool="move" class="tool">Move</button>
       <button data-tool="point" class="tool">Point</button>
       <button data-tool="line" class="tool">Line</button>
       <button data-tool="circle" class="tool">Circle</button>
@@ -54,6 +55,17 @@
       <label class="chk">
         Dragon iters
         <input id="dragonIterations" type="number" min="1" max="16" value="10" />
+      </label>
+      <label class="chk">
+        Stickman pose
+        <select id="stickmanPose">
+          <option value="random" selected>Random</option>
+          <option value="run">Run</option>
+          <option value="jump">Jump</option>
+          <option value="sit">Sit</option>
+          <option value="lie">Lie</option>
+          <option value="fly">Fly</option>
+        </select>
       </label>
     </aside>
 

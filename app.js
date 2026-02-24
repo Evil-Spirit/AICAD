@@ -6,6 +6,7 @@ const toolButtons = [...document.querySelectorAll('.tool')];
 const showGridEl = document.getElementById('showGrid');
 const snapGridEl = document.getElementById('snapGrid');
 const dragonIterationsEl = document.getElementById('dragonIterations');
+const stickmanPoseEl = document.getElementById('stickmanPose');
 const selectionInfo = document.getElementById('selectionInfo');
 const entityList = document.getElementById('entityList');
 const dimensionList = document.getElementById('dimensionList');
@@ -21,6 +22,11 @@ const applyConstraintBtn = document.getElementById('applyConstraintBtn');
 let currentTool = 'select';
 let tempPoints = [];
 let mouse = { x: 0, y: 0 };
+let moveDrag = {
+  active: false,
+  entityId: null,
+  last: null,
+};
 
 const state = {
   entities: [],
@@ -129,6 +135,20 @@ function randomPick(arr, randomFn = Math.random) {
   return arr[Math.floor(randomFn() * arr.length)];
 }
 
+function colorFromId(id) {
+  const hue = hashString(String(id)) % 360;
+  return `hsl(${hue}, 78%, 62%)`;
+}
+
+function randomEntityColor() {
+  const hue = Math.floor(Math.random() * 360);
+  return `hsl(${hue}, 78%, 62%)`;
+}
+
+function getEntityColor(entity) {
+  return entity.color || colorFromId(entity.id);
+}
+
 function generateFunnyFace(randomFn = Math.random) {
   const gender = randomFn() < 0.5 ? 'male' : 'female';
   const mood = randomPick(['happy', 'kind', 'angry', 'sleepy', 'surprised'], randomFn);
@@ -160,20 +180,68 @@ function getStickmanFace(stickman) {
   return generateFunnyFace(rnd);
 }
 
-function buildStickmanGeometry(headCenter, scalePoint) {
+function buildStickmanGeometry(headCenter, scalePoint, pose = 'run') {
   const size = Math.max(14, distance(headCenter, scalePoint));
   const headRadius = size * 0.32;
   const neck = { x: headCenter.x, y: headCenter.y + headRadius };
-  const pelvis = { x: headCenter.x, y: neck.y + size * 1.15 };
-  const armY = neck.y + size * 0.45;
-  const leftHand = { x: headCenter.x - size * 0.7, y: armY + size * 0.2 };
-  const rightHand = { x: headCenter.x + size * 0.7, y: armY + size * 0.2 };
-  const leftFoot = { x: headCenter.x - size * 0.5, y: pelvis.y + size * 0.95 };
-  const rightFoot = { x: headCenter.x + size * 0.5, y: pelvis.y + size * 0.95 };
+  let pelvis = { x: headCenter.x, y: neck.y + size * 1.15 };
+  let shoulder = { x: neck.x, y: neck.y + (pelvis.y - neck.y) * 0.35 };
+  let leftHand = { x: headCenter.x - size * 0.7, y: shoulder.y + size * 0.2 };
+  let rightHand = { x: headCenter.x + size * 0.7, y: shoulder.y + size * 0.2 };
+  let leftFoot = { x: headCenter.x - size * 0.5, y: pelvis.y + size * 0.95 };
+  let rightFoot = { x: headCenter.x + size * 0.5, y: pelvis.y + size * 0.95 };
+
+  if (pose === 'run') {
+    pelvis = { x: headCenter.x + size * 0.18, y: neck.y + size * 1.05 };
+    shoulder = { x: neck.x + size * 0.08, y: neck.y + size * 0.4 };
+    leftHand = { x: shoulder.x - size * 0.95, y: shoulder.y + size * 0.2 };
+    rightHand = { x: shoulder.x + size * 0.7, y: shoulder.y - size * 0.45 };
+    leftFoot = { x: pelvis.x - size * 0.95, y: pelvis.y + size * 0.55 };
+    rightFoot = { x: pelvis.x + size * 0.9, y: pelvis.y + size * 0.35 };
+  }
+
+  if (pose === 'jump') {
+    pelvis = { x: headCenter.x, y: neck.y + size * 0.95 };
+    shoulder = { x: neck.x, y: neck.y + size * 0.28 };
+    leftHand = { x: shoulder.x - size * 0.82, y: shoulder.y - size * 0.7 };
+    rightHand = { x: shoulder.x + size * 0.82, y: shoulder.y - size * 0.7 };
+    leftFoot = { x: pelvis.x - size * 0.65, y: pelvis.y + size * 0.4 };
+    rightFoot = { x: pelvis.x + size * 0.65, y: pelvis.y + size * 0.4 };
+  }
+
+  if (pose === 'sit') {
+    pelvis = { x: headCenter.x + size * 0.08, y: neck.y + size * 0.92 };
+    shoulder = { x: neck.x, y: neck.y + size * 0.32 };
+    leftHand = { x: shoulder.x - size * 0.55, y: shoulder.y + size * 0.45 };
+    rightHand = { x: shoulder.x + size * 0.55, y: shoulder.y + size * 0.45 };
+    leftFoot = { x: pelvis.x + size * 0.95, y: pelvis.y + size * 0.18 };
+    rightFoot = { x: pelvis.x + size * 0.95, y: pelvis.y + size * 0.55 };
+  }
+
+  if (pose === 'lie') {
+    pelvis = { x: neck.x + size * 1.1, y: neck.y + size * 0.08 };
+    shoulder = { x: neck.x + size * 0.35, y: neck.y + size * 0.05 };
+    leftHand = { x: shoulder.x + size * 0.4, y: shoulder.y - size * 0.6 };
+    rightHand = { x: shoulder.x + size * 0.45, y: shoulder.y + size * 0.6 };
+    leftFoot = { x: pelvis.x + size * 0.7, y: pelvis.y - size * 0.5 };
+    rightFoot = { x: pelvis.x + size * 0.75, y: pelvis.y + size * 0.5 };
+  }
+
+  if (pose === 'fly') {
+    pelvis = { x: neck.x + size * 0.88, y: neck.y - size * 0.78 };
+    shoulder = { x: neck.x + size * 0.2, y: neck.y - size * 0.2 };
+    leftHand = { x: shoulder.x - size * 0.95, y: shoulder.y - size * 0.65 };
+    rightHand = { x: shoulder.x + size * 1.1, y: shoulder.y - size * 0.3 };
+    leftFoot = { x: pelvis.x - size * 0.95, y: pelvis.y + size * 0.15 };
+    rightFoot = { x: pelvis.x + size * 0.45, y: pelvis.y + size * 0.95 };
+  }
+
   return {
     headCenter,
     headRadius,
+    pose,
     neck,
+    shoulder,
     pelvis,
     leftHand,
     rightHand,
@@ -321,7 +389,7 @@ function drawStickmanFace(geo, face) {
 }
 
 function drawStickmanShape(stickman) {
-  const g = buildStickmanGeometry(stickman.headCenter, stickman.scalePoint);
+  const g = buildStickmanGeometry(stickman.headCenter, stickman.scalePoint, stickman.pose || 'run');
   ctx.beginPath();
   ctx.arc(g.headCenter.x, g.headCenter.y, g.headRadius, 0, Math.PI * 2);
   ctx.stroke();
@@ -329,9 +397,9 @@ function drawStickmanShape(stickman) {
   ctx.beginPath();
   ctx.moveTo(g.neck.x, g.neck.y);
   ctx.lineTo(g.pelvis.x, g.pelvis.y);
-  ctx.moveTo(g.neck.x, g.neck.y + (g.pelvis.y - g.neck.y) * 0.35);
+  ctx.moveTo(g.shoulder.x, g.shoulder.y);
   ctx.lineTo(g.leftHand.x, g.leftHand.y);
-  ctx.moveTo(g.neck.x, g.neck.y + (g.pelvis.y - g.neck.y) * 0.35);
+  ctx.moveTo(g.shoulder.x, g.shoulder.y);
   ctx.lineTo(g.rightHand.x, g.rightHand.y);
   ctx.moveTo(g.pelvis.x, g.pelvis.y);
   ctx.lineTo(g.leftFoot.x, g.leftFoot.y);
@@ -343,13 +411,12 @@ function drawStickmanShape(stickman) {
 }
 
 function stickmanDistanceToPoint(stickman, pt) {
-  const g = buildStickmanGeometry(stickman.headCenter, stickman.scalePoint);
+  const g = buildStickmanGeometry(stickman.headCenter, stickman.scalePoint, stickman.pose || 'run');
   let best = Math.abs(distance(g.headCenter, pt) - g.headRadius);
-  const shoulder = { x: g.neck.x, y: g.neck.y + (g.pelvis.y - g.neck.y) * 0.35 };
   const segments = [
     [g.neck, g.pelvis],
-    [shoulder, g.leftHand],
-    [shoulder, g.rightHand],
+    [g.shoulder, g.leftHand],
+    [g.shoulder, g.rightHand],
     [g.pelvis, g.leftFoot],
     [g.pelvis, g.rightFoot],
   ];
@@ -415,7 +482,7 @@ function getPointByEntity(entity) {
 
 function drawPoint(p, selected = false) {
   ctx.save();
-  ctx.fillStyle = selected ? '#fbbf24' : '#22d3ee';
+  ctx.fillStyle = selected ? '#fbbf24' : p.color || '#22d3ee';
   ctx.beginPath();
   ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
   ctx.fill();
@@ -424,11 +491,13 @@ function drawPoint(p, selected = false) {
 
 function drawEntity(entity, selected = false) {
   ctx.save();
-  ctx.strokeStyle = selected ? '#fbbf24' : '#e2e8f0';
+  const entityColor = getEntityColor(entity);
+  ctx.strokeStyle = selected ? '#fbbf24' : entityColor;
+  ctx.fillStyle = selected ? '#fbbf24' : entityColor;
   ctx.lineWidth = selected ? 2.5 : 1.8;
 
   if (entity.type === 'point') {
-    drawPoint(entity, selected);
+    drawPoint({ ...entity, color: entityColor }, selected);
   }
 
   if (entity.type === 'line') {
@@ -649,7 +718,12 @@ function drawTempGeometry() {
   }
 
   if (currentTool === 'stickman' && tempPoints.length === 1) {
-    drawStickmanShape({ headCenter: tempPoints[0], scalePoint: mouse });
+    const selectedPose = stickmanPoseEl?.value || 'random';
+    drawStickmanShape({
+      headCenter: tempPoints[0],
+      scalePoint: mouse,
+      pose: selectedPose === 'random' ? 'run' : selectedPose,
+    });
   }
 
   ctx.restore();
@@ -779,13 +853,69 @@ function computeCircleFrom3Points(p1, p2, p3) {
 function setTool(tool) {
   currentTool = tool;
   tempPoints = [];
+  moveDrag.active = false;
+  moveDrag.entityId = null;
+  moveDrag.last = null;
   toolButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.tool === tool));
   statusbar.textContent = `Tool: ${tool}`;
-  canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
+  canvas.style.cursor = tool === 'select' ? 'default' : tool === 'move' ? 'grab' : 'crosshair';
 }
 
 function addEntity(entity) {
+  if (!entity.color) {
+    entity.color = randomEntityColor();
+  }
   state.entities.push(entity);
+}
+
+function translateEntity(entity, dx, dy) {
+  if (!entity) return;
+  if (entity.type === 'point') {
+    entity.x += dx;
+    entity.y += dy;
+  }
+  if (entity.type === 'line') {
+    entity.a.x += dx;
+    entity.a.y += dy;
+    entity.b.x += dx;
+    entity.b.y += dy;
+  }
+  if (entity.type === 'circle' || entity.type === 'arc') {
+    entity.c.x += dx;
+    entity.c.y += dy;
+  }
+  if (entity.type === 'ellipse' || entity.type === 'ellipticArc') {
+    entity.c.x += dx;
+    entity.c.y += dy;
+  }
+  if (entity.type === 'bezier') {
+    entity.p0.x += dx;
+    entity.p0.y += dy;
+    entity.p1.x += dx;
+    entity.p1.y += dy;
+    entity.p2.x += dx;
+    entity.p2.y += dy;
+    entity.p3.x += dx;
+    entity.p3.y += dy;
+  }
+  if (entity.type === 'dragon') {
+    entity.p0.x += dx;
+    entity.p0.y += dy;
+    entity.p1.x += dx;
+    entity.p1.y += dy;
+    if (Array.isArray(entity.points)) {
+      for (const p of entity.points) {
+        p.x += dx;
+        p.y += dy;
+      }
+    }
+  }
+  if (entity.type === 'stickman') {
+    entity.headCenter.x += dx;
+    entity.headCenter.y += dy;
+    entity.scalePoint.x += dx;
+    entity.scalePoint.y += dy;
+  }
 }
 
 function addPointEntity(p) {
@@ -950,6 +1080,10 @@ function applyConstraintFromSelection() {
 function onCanvasClick(event) {
   const p = toCanvasCoords(event);
 
+  if (currentTool === 'move') {
+    return;
+  }
+
   if (currentTool === 'select') {
     handleSelectClick(p);
     render();
@@ -1084,11 +1218,14 @@ function onCanvasClick(event) {
   if (currentTool === 'stickman') {
     tempPoints.push(p);
     if (tempPoints.length === 2) {
+      const requestedPose = stickmanPoseEl?.value || 'random';
+      const pose = requestedPose === 'random' ? randomPick(['run', 'jump', 'sit', 'lie', 'fly']) : requestedPose;
       addEntity({
         id: nextId('stickman'),
         type: 'stickman',
         headCenter: tempPoints[0],
         scalePoint: tempPoints[1],
+        pose,
         face: generateFunnyFace(),
       });
       tempPoints = [];
@@ -1173,7 +1310,55 @@ for (const btn of toolButtons) {
 
 canvas.addEventListener('mousemove', (event) => {
   mouse = toCanvasCoords(event);
+  if (currentTool === 'move' && moveDrag.active && moveDrag.entityId) {
+    const entity = getEntityById(moveDrag.entityId);
+    if (entity && moveDrag.last) {
+      const dx = mouse.x - moveDrag.last.x;
+      const dy = mouse.y - moveDrag.last.y;
+      translateEntity(entity, dx, dy);
+      moveDrag.last = { x: mouse.x, y: mouse.y };
+      render();
+      return;
+    }
+  }
   if (tempPoints.length) render();
+});
+
+canvas.addEventListener('mousedown', (event) => {
+  if (currentTool !== 'move') return;
+  const p = toCanvasCoords(event);
+  const entity = nearestEntity(p.x, p.y);
+  if (!entity) {
+    state.selected = [];
+    render();
+    return;
+  }
+  state.selected = [entity.id];
+  moveDrag.active = true;
+  moveDrag.entityId = entity.id;
+  moveDrag.last = p;
+  canvas.style.cursor = 'grabbing';
+  render();
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (!moveDrag.active) return;
+  moveDrag.active = false;
+  moveDrag.entityId = null;
+  moveDrag.last = null;
+  canvas.style.cursor = currentTool === 'move' ? 'grab' : canvas.style.cursor;
+  solveConstraints();
+  render();
+});
+
+canvas.addEventListener('mouseleave', () => {
+  if (!moveDrag.active) return;
+  moveDrag.active = false;
+  moveDrag.entityId = null;
+  moveDrag.last = null;
+  canvas.style.cursor = currentTool === 'move' ? 'grab' : canvas.style.cursor;
+  solveConstraints();
+  render();
 });
 
 canvas.addEventListener('click', onCanvasClick);

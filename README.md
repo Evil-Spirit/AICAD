@@ -13,6 +13,8 @@ Lightweight online 2D CAD (HTML + JavaScript) for creating:
 - dimensions
 - constraints
 
+All newly created figures are generated with random colors.
+
 Also supports saving and loading drawings in JSON format.
 
 ## Run
@@ -32,6 +34,7 @@ http://localhost:8080
 ## Tools
 
 - **Select**: click entity to select, Ctrl/Cmd+click for multi-select.
+- **Move**: drag any entity to move it.
 - **Point**: one click creates a point.
 - **Line**: two clicks (start/end).
 - **Circle**: two clicks (center + radius point).
@@ -41,6 +44,7 @@ http://localhost:8080
 - **Bezier Spline**: four clicks (start point, control point 1, control point 2, end point).
 - **Dragon**: two clicks (start and end), recursion depth is controlled by `Dragon iters`.
 - **Человечек**: two clicks (head center and scale point), creates a schematic human from one circle and lines with a random funny face (male/female variants, hair styles, moustache/beard options, different eyes and mouth moods).
+- **Stickman pose** selector: `run`, `jump`, `sit`, `lie`, `fly` (or random).
 
 ## Dimensions
 
