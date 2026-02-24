@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AICAD 2D</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>AICAD 2D</h1>
+    <div class="file-actions">
+      <button id="newDocBtn">New</button>
+      <button id="saveBtn">Save JSON</button>
+      <label class="load-label">
+        Load JSON
+        <input id="loadInput" type="file" accept="application/json" />
+      </label>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="toolbar" aria-label="Tools">
+      <h2>Draw</h2>
+      <button data-tool="select" class="tool active">Select</button>
+      <button data-tool="point" class="tool">Point</button>
+      <button data-tool="line" class="tool">Line</button>
+      <button data-tool="circle" class="tool">Circle</button>
+      <button data-tool="arc" class="tool">Arc (3 pts)</button>
+      <button data-tool="ellipse" class="tool">Ellipse</button>
+      <button data-tool="ellipticArc" class="tool">Elliptic Arc</button>
+
+      <h2>Dimensions</h2>
+      <button data-tool="dimLength" class="tool">Length</button>
+      <button data-tool="dimRadius" class="tool">Radius</button>
+      <button data-tool="dimDistance" class="tool">Distance</button>
+
+      <h2>Constraints</h2>
+      <button id="applyConstraintBtn">Apply on selected</button>
+      <select id="constraintType">
+        <option value="horizontal">Horizontal (line)</option>
+        <option value="vertical">Vertical (line)</option>
+        <option value="equalLength">Equal Length (2 lines)</option>
+        <option value="coincident">Coincident (2 points)</option>
+        <option value="pointOnCircle">Point on Circle</option>
+      </select>
+
+      <h2>View</h2>
+      <label class="chk"><input id="showGrid" type="checkbox" checked /> Show grid</label>
+      <label class="chk"><input id="snapGrid" type="checkbox" checked /> Snap to grid</label>
+    </aside>
+
+    <section class="canvas-wrap">
+      <canvas id="cadCanvas" width="1200" height="760"></canvas>
+      <div id="statusbar">Tool: Select</div>
+    </section>
+
+    <aside class="inspector">
+      <h2>Selection</h2>
+      <div id="selectionInfo">Nothing selected</div>
+
+      <h2>Entities</h2>
+      <ul id="entityList"></ul>
+
+      <h2>Dimensions</h2>
+      <ul id="dimensionList"></ul>
+
+      <h2>Constraints</h2>
+      <ul id="constraintList"></ul>
+    </aside>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

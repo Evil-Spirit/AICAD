@@ -1,0 +1,724 @@
+const canvas = document.getElementById('cadCanvas');
+const ctx = canvas.getContext('2d');
+
+const statusbar = document.getElementById('statusbar');
+const toolButtons = [...document.querySelectorAll('.tool')];
+const showGridEl = document.getElementById('showGrid');
+const snapGridEl = document.getElementById('snapGrid');
+const selectionInfo = document.getElementById('selectionInfo');
+const entityList = document.getElementById('entityList');
+const dimensionList = document.getElementById('dimensionList');
+const constraintList = document.getElementById('constraintList');
+
+const newDocBtn = document.getElementById('newDocBtn');
+const saveBtn = document.getElementById('saveBtn');
+const loadInput = document.getElementById('loadInput');
+
+const constraintTypeEl = document.getElementById('constraintType');
+const applyConstraintBtn = document.getElementById('applyConstraintBtn');
+
+let currentTool = 'select';
+let tempPoints = [];
+let mouse = { x: 0, y: 0 };
+
+const state = {
+  entities: [],
+  dimensions: [],
+  constraints: [],
+  selected: [],
+  gridSize: 20,
+  idCounter: 1,
+};
+
+function nextId(prefix) {
+  return `${prefix}_${state.idCounter++}`;
+}
+
+function distance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function angle(center, pt) {
+  return Math.atan2(pt.y - center.y, pt.x - center.x);
+}
+
+function normalizeAngle(a) {
+  let result = a;
+  while (result < 0) result += Math.PI * 2;
+  while (result > Math.PI * 2) result -= Math.PI * 2;
+  return result;
+}
+
+function toCanvasCoords(event) {
+  const rect = canvas.getBoundingClientRect();
+  const raw = {
+    x: ((event.clientX - rect.left) * canvas.width) / rect.width,
+    y: ((event.clientY - rect.top) * canvas.height) / rect.height,
+  };
+  if (!snapGridEl.checked) return raw;
+  const g = state.gridSize;
+  return {
+    x: Math.round(raw.x / g) * g,
+    y: Math.round(raw.y / g) * g,
+  };
+}
+
+function drawGrid() {
+  if (!showGridEl.checked) return;
+  const step = state.gridSize;
+  ctx.save();
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= canvas.width; x += step) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= canvas.height; y += step) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.width, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function getEntityById(id) {
+  return state.entities.find((entity) => entity.id === id);
+}
+
+function getPointByEntity(entity) {
+  if (!entity || entity.type !== 'point') return null;
+  return { x: entity.x, y: entity.y };
+}
+
+function drawPoint(p, selected = false) {
+  ctx.save();
+  ctx.fillStyle = selected ? '#fbbf24' : '#22d3ee';
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawEntity(entity, selected = false) {
+  ctx.save();
+  ctx.strokeStyle = selected ? '#fbbf24' : '#e2e8f0';
+  ctx.lineWidth = selected ? 2.5 : 1.8;
+
+  if (entity.type === 'point') {
+    drawPoint(entity, selected);
+  }
+
+  if (entity.type === 'line') {
+    ctx.beginPath();
+    ctx.moveTo(entity.a.x, entity.a.y);
+    ctx.lineTo(entity.b.x, entity.b.y);
+    ctx.stroke();
+  }
+
+  if (entity.type === 'circle') {
+    ctx.beginPath();
+    ctx.arc(entity.c.x, entity.c.y, entity.r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  if (entity.type === 'arc') {
+    ctx.beginPath();
+    ctx.arc(entity.c.x, entity.c.y, entity.r, entity.a0, entity.a1, entity.ccw);
+    ctx.stroke();
+  }
+
+  if (entity.type === 'ellipse' || entity.type === 'ellipticArc') {
+    const end = entity.type === 'ellipse' ? Math.PI * 2 : entity.a1;
+    const start = entity.type === 'ellipse' ? 0 : entity.a0;
+    ctx.beginPath();
+    ctx.ellipse(entity.c.x, entity.c.y, entity.rx, entity.ry, entity.rotation, start, end, entity.ccw || false);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function textAt(text, x, y) {
+  ctx.save();
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = '12px Inter, system-ui, sans-serif';
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+function drawDimensions() {
+  for (const dim of state.dimensions) {
+    ctx.save();
+    ctx.strokeStyle = '#86efac';
+    ctx.lineWidth = 1.2;
+
+    if (dim.type === 'length') {
+      const line = getEntityById(dim.refId);
+      if (!line || line.type !== 'line') continue;
+      const mid = { x: (line.a.x + line.b.x) / 2, y: (line.a.y + line.b.y) / 2 };
+      const len = distance(line.a, line.b).toFixed(2);
+      textAt(`L=${len}`, mid.x + 8, mid.y - 8);
+    }
+
+    if (dim.type === 'radius') {
+      const circle = getEntityById(dim.refId);
+      if (!circle || (circle.type !== 'circle' && circle.type !== 'arc')) continue;
+      ctx.beginPath();
+      ctx.moveTo(circle.c.x, circle.c.y);
+      ctx.lineTo(circle.c.x + circle.r, circle.c.y);
+      ctx.stroke();
+      textAt(`R=${circle.r.toFixed(2)}`, circle.c.x + circle.r + 6, circle.c.y - 4);
+    }
+
+    if (dim.type === 'distance') {
+      const p1 = getEntityById(dim.aId);
+      const p2 = getEntityById(dim.bId);
+      if (!p1 || !p2 || p1.type !== 'point' || p2.type !== 'point') continue;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+      const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+      textAt(`D=${distance(p1, p2).toFixed(2)}`, mid.x + 6, mid.y + 12);
+    }
+
+    ctx.restore();
+  }
+}
+
+function drawTempGeometry() {
+  if (!tempPoints.length) return;
+  ctx.save();
+  ctx.strokeStyle = '#38bdf8';
+  ctx.setLineDash([6, 6]);
+  ctx.lineWidth = 1.2;
+
+  for (const p of tempPoints) {
+    drawPoint(p, false);
+  }
+
+  if (currentTool === 'line' && tempPoints.length === 1) {
+    ctx.beginPath();
+    ctx.moveTo(tempPoints[0].x, tempPoints[0].y);
+    ctx.lineTo(mouse.x, mouse.y);
+    ctx.stroke();
+  }
+
+  if (currentTool === 'circle' && tempPoints.length === 1) {
+    const radius = distance(tempPoints[0], mouse);
+    ctx.beginPath();
+    ctx.arc(tempPoints[0].x, tempPoints[0].y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  if ((currentTool === 'ellipse' || currentTool === 'ellipticArc') && tempPoints.length >= 1) {
+    if (tempPoints.length === 1) {
+      ctx.beginPath();
+      ctx.moveTo(tempPoints[0].x, tempPoints[0].y);
+      ctx.lineTo(mouse.x, mouse.y);
+      ctx.stroke();
+    }
+    if (tempPoints.length === 2) {
+      const c = tempPoints[0];
+      const major = tempPoints[1];
+      const rx = Math.max(1, distance(c, major));
+      const rotation = angle(c, major);
+      const ry = Math.max(1, distance(c, mouse));
+      const start = currentTool === 'ellipticArc' ? 0 : 0;
+      const end = currentTool === 'ellipticArc' ? angle(c, mouse) : Math.PI * 2;
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y, rx, ry, rotation, start, end, false);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
+function renderEntityList() {
+  entityList.innerHTML = '';
+  for (const e of state.entities) {
+    const li = document.createElement('li');
+    li.textContent = `${e.id}: ${e.type}`;
+    if (state.selected.includes(e.id)) li.style.borderColor = '#fbbf24';
+    entityList.appendChild(li);
+  }
+}
+
+function renderDimensionList() {
+  dimensionList.innerHTML = '';
+  for (const d of state.dimensions) {
+    const li = document.createElement('li');
+    li.textContent = `${d.id}: ${d.type}`;
+    dimensionList.appendChild(li);
+  }
+}
+
+function renderConstraintList() {
+  constraintList.innerHTML = '';
+  for (const c of state.constraints) {
+    const li = document.createElement('li');
+    li.textContent = `${c.id}: ${c.type}`;
+    constraintList.appendChild(li);
+  }
+}
+
+function updateSelectionInfo() {
+  if (!state.selected.length) {
+    selectionInfo.textContent = 'Nothing selected';
+    return;
+  }
+  const selectedEntities = state.selected.map((id) => getEntityById(id)).filter(Boolean);
+  selectionInfo.textContent = selectedEntities.map((entity) => `${entity.id} (${entity.type})`).join(', ');
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawGrid();
+  for (const entity of state.entities) {
+    drawEntity(entity, state.selected.includes(entity.id));
+  }
+  drawDimensions();
+  drawTempGeometry();
+  renderEntityList();
+  renderDimensionList();
+  renderConstraintList();
+  updateSelectionInfo();
+}
+
+function hitPoint(point, x, y, eps = 8) {
+  return distance(point, { x, y }) <= eps;
+}
+
+function nearestEntity(x, y) {
+  let best = null;
+  let bestDist = Infinity;
+
+  for (const e of state.entities) {
+    let d = Infinity;
+
+    if (e.type === 'point') {
+      d = distance(e, { x, y });
+    } else if (e.type === 'line') {
+      const A = e.a;
+      const B = e.b;
+      const vx = B.x - A.x;
+      const vy = B.y - A.y;
+      const len2 = vx * vx + vy * vy;
+      if (len2 > 0) {
+        const t = Math.max(0, Math.min(1, ((x - A.x) * vx + (y - A.y) * vy) / len2));
+        const proj = { x: A.x + t * vx, y: A.y + t * vy };
+        d = distance(proj, { x, y });
+      }
+    } else if (e.type === 'circle') {
+      d = Math.abs(distance(e.c, { x, y }) - e.r);
+    } else if (e.type === 'arc') {
+      d = Math.abs(distance(e.c, { x, y }) - e.r);
+    } else if (e.type === 'ellipse' || e.type === 'ellipticArc') {
+      d = distance(e.c, { x, y }) / Math.max(e.rx, e.ry);
+      d = Math.abs(d - 1) * Math.max(e.rx, e.ry);
+    }
+
+    if (d < bestDist) {
+      best = e;
+      bestDist = d;
+    }
+  }
+
+  return bestDist <= 12 ? best : null;
+}
+
+function computeCircleFrom3Points(p1, p2, p3) {
+  const a = p2.x - p1.x;
+  const b = p2.y - p1.y;
+  const c = p3.x - p1.x;
+  const d = p3.y - p1.y;
+  const e = a * (p1.x + p2.x) + b * (p1.y + p2.y);
+  const f = c * (p1.x + p3.x) + d * (p1.y + p3.y);
+  const g = 2 * (a * (p3.y - p2.y) - b * (p3.x - p2.x));
+  if (Math.abs(g) < 1e-9) return null;
+  const cx = (d * e - b * f) / g;
+  const cy = (a * f - c * e) / g;
+  const center = { x: cx, y: cy };
+  return {
+    c: center,
+    r: distance(center, p1),
+    a0: angle(center, p1),
+    a1: angle(center, p3),
+    ccw: true,
+  };
+}
+
+function setTool(tool) {
+  currentTool = tool;
+  tempPoints = [];
+  toolButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.tool === tool));
+  statusbar.textContent = `Tool: ${tool}`;
+  canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
+}
+
+function addEntity(entity) {
+  state.entities.push(entity);
+}
+
+function addPointEntity(p) {
+  addEntity({ id: nextId('point'), type: 'point', x: p.x, y: p.y });
+}
+
+function handleSelectClick(p) {
+  const entity = nearestEntity(p.x, p.y);
+  if (!entity) {
+    state.selected = [];
+    return;
+  }
+  if (window.event && (window.event.ctrlKey || window.event.metaKey)) {
+    if (state.selected.includes(entity.id)) {
+      state.selected = state.selected.filter((id) => id !== entity.id);
+    } else {
+      state.selected.push(entity.id);
+    }
+  } else {
+    state.selected = [entity.id];
+  }
+}
+
+function commitDimensionByTool() {
+  if (currentTool === 'dimLength') {
+    const e = state.selected.map(getEntityById).find((item) => item && item.type === 'line');
+    if (!e) {
+      alert('Select one line first.');
+      return;
+    }
+    state.dimensions.push({ id: nextId('dim'), type: 'length', refId: e.id });
+  }
+
+  if (currentTool === 'dimRadius') {
+    const e = state.selected
+      .map(getEntityById)
+      .find((item) => item && (item.type === 'circle' || item.type === 'arc'));
+    if (!e) {
+      alert('Select one circle or arc first.');
+      return;
+    }
+    state.dimensions.push({ id: nextId('dim'), type: 'radius', refId: e.id });
+  }
+
+  if (currentTool === 'dimDistance') {
+    const pts = state.selected.map(getEntityById).filter((item) => item && item.type === 'point');
+    if (pts.length < 2) {
+      alert('Select two points first.');
+      return;
+    }
+    state.dimensions.push({ id: nextId('dim'), type: 'distance', aId: pts[0].id, bId: pts[1].id });
+  }
+}
+
+function solveConstraints(iterations = 3) {
+  for (let i = 0; i < iterations; i++) {
+    for (const c of state.constraints) {
+      if (c.type === 'horizontal') {
+        const line = getEntityById(c.lineId);
+        if (!line || line.type !== 'line') continue;
+        const y = (line.a.y + line.b.y) / 2;
+        line.a.y = y;
+        line.b.y = y;
+      }
+
+      if (c.type === 'vertical') {
+        const line = getEntityById(c.lineId);
+        if (!line || line.type !== 'line') continue;
+        const x = (line.a.x + line.b.x) / 2;
+        line.a.x = x;
+        line.b.x = x;
+      }
+
+      if (c.type === 'equalLength') {
+        const l1 = getEntityById(c.lineAId);
+        const l2 = getEntityById(c.lineBId);
+        if (!l1 || !l2 || l1.type !== 'line' || l2.type !== 'line') continue;
+        const target = distance(l1.a, l1.b);
+        const dir = {
+          x: l2.b.x - l2.a.x,
+          y: l2.b.y - l2.a.y,
+        };
+        const len = Math.hypot(dir.x, dir.y) || 1;
+        const ux = dir.x / len;
+        const uy = dir.y / len;
+        l2.b.x = l2.a.x + ux * target;
+        l2.b.y = l2.a.y + uy * target;
+      }
+
+      if (c.type === 'coincident') {
+        const p1 = getEntityById(c.pointAId);
+        const p2 = getEntityById(c.pointBId);
+        if (!p1 || !p2 || p1.type !== 'point' || p2.type !== 'point') continue;
+        const x = (p1.x + p2.x) / 2;
+        const y = (p1.y + p2.y) / 2;
+        p1.x = x;
+        p1.y = y;
+        p2.x = x;
+        p2.y = y;
+      }
+
+      if (c.type === 'pointOnCircle') {
+        const p = getEntityById(c.pointId);
+        const circ = getEntityById(c.circleId);
+        if (!p || !circ || p.type !== 'point' || circ.type !== 'circle') continue;
+        const ang = angle(circ.c, p);
+        p.x = circ.c.x + Math.cos(ang) * circ.r;
+        p.y = circ.c.y + Math.sin(ang) * circ.r;
+      }
+    }
+  }
+}
+
+function applyConstraintFromSelection() {
+  const type = constraintTypeEl.value;
+  const selectedEntities = state.selected.map(getEntityById).filter(Boolean);
+
+  if (type === 'horizontal') {
+    const line = selectedEntities.find((e) => e.type === 'line');
+    if (!line) return alert('Select one line.');
+    state.constraints.push({ id: nextId('c'), type: 'horizontal', lineId: line.id });
+  }
+
+  if (type === 'vertical') {
+    const line = selectedEntities.find((e) => e.type === 'line');
+    if (!line) return alert('Select one line.');
+    state.constraints.push({ id: nextId('c'), type: 'vertical', lineId: line.id });
+  }
+
+  if (type === 'equalLength') {
+    const lines = selectedEntities.filter((e) => e.type === 'line');
+    if (lines.length < 2) return alert('Select two lines.');
+    state.constraints.push({
+      id: nextId('c'),
+      type: 'equalLength',
+      lineAId: lines[0].id,
+      lineBId: lines[1].id,
+    });
+  }
+
+  if (type === 'coincident') {
+    const points = selectedEntities.filter((e) => e.type === 'point');
+    if (points.length < 2) return alert('Select two points.');
+    state.constraints.push({
+      id: nextId('c'),
+      type: 'coincident',
+      pointAId: points[0].id,
+      pointBId: points[1].id,
+    });
+  }
+
+  if (type === 'pointOnCircle') {
+    const point = selectedEntities.find((e) => e.type === 'point');
+    const circle = selectedEntities.find((e) => e.type === 'circle');
+    if (!point || !circle) return alert('Select one point and one circle.');
+    state.constraints.push({ id: nextId('c'), type: 'pointOnCircle', pointId: point.id, circleId: circle.id });
+  }
+
+  solveConstraints();
+}
+
+function onCanvasClick(event) {
+  const p = toCanvasCoords(event);
+
+  if (currentTool === 'select') {
+    handleSelectClick(p);
+    render();
+    return;
+  }
+
+  if (currentTool === 'point') {
+    addPointEntity(p);
+    render();
+    return;
+  }
+
+  if (currentTool === 'line') {
+    tempPoints.push(p);
+    if (tempPoints.length === 2) {
+      addEntity({ id: nextId('line'), type: 'line', a: tempPoints[0], b: tempPoints[1] });
+      tempPoints = [];
+      solveConstraints();
+    }
+    render();
+    return;
+  }
+
+  if (currentTool === 'circle') {
+    tempPoints.push(p);
+    if (tempPoints.length === 2) {
+      addEntity({ id: nextId('circle'), type: 'circle', c: tempPoints[0], r: distance(tempPoints[0], tempPoints[1]) });
+      tempPoints = [];
+      solveConstraints();
+    }
+    render();
+    return;
+  }
+
+  if (currentTool === 'arc') {
+    tempPoints.push(p);
+    if (tempPoints.length === 3) {
+      const arc = computeCircleFrom3Points(tempPoints[0], tempPoints[1], tempPoints[2]);
+      if (arc) {
+        addEntity({ id: nextId('arc'), type: 'arc', ...arc });
+      }
+      tempPoints = [];
+      solveConstraints();
+    }
+    render();
+    return;
+  }
+
+  if (currentTool === 'ellipse') {
+    tempPoints.push(p);
+    if (tempPoints.length === 3) {
+      const c = tempPoints[0];
+      const major = tempPoints[1];
+      const third = tempPoints[2];
+      addEntity({
+        id: nextId('ellipse'),
+        type: 'ellipse',
+        c,
+        rx: Math.max(1, distance(c, major)),
+        ry: Math.max(1, distance(c, third)),
+        rotation: angle(c, major),
+      });
+      tempPoints = [];
+      solveConstraints();
+    }
+    render();
+    return;
+  }
+
+  if (currentTool === 'ellipticArc') {
+    tempPoints.push(p);
+    if (tempPoints.length === 4) {
+      const c = tempPoints[0];
+      const major = tempPoints[1];
+      const minor = tempPoints[2];
+      const end = tempPoints[3];
+      addEntity({
+        id: nextId('earc'),
+        type: 'ellipticArc',
+        c,
+        rx: Math.max(1, distance(c, major)),
+        ry: Math.max(1, distance(c, minor)),
+        rotation: angle(c, major),
+        a0: normalizeAngle(angle(c, major)),
+        a1: normalizeAngle(angle(c, end)),
+        ccw: false,
+      });
+      tempPoints = [];
+      solveConstraints();
+    }
+    render();
+    return;
+  }
+
+  if (currentTool.startsWith('dim')) {
+    commitDimensionByTool();
+    render();
+  }
+}
+
+function handleSave() {
+  const payload = {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    model: {
+      entities: state.entities,
+      dimensions: state.dimensions,
+      constraints: state.constraints,
+      idCounter: state.idCounter,
+    },
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'aicad-drawing.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function handleLoadFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(String(reader.result || '{}'));
+      const model = data.model;
+      if (!model || !Array.isArray(model.entities) || !Array.isArray(model.dimensions) || !Array.isArray(model.constraints)) {
+        throw new Error('Invalid format');
+      }
+      state.entities = model.entities;
+      state.dimensions = model.dimensions;
+      state.constraints = model.constraints;
+      state.idCounter = Number(model.idCounter) || 1;
+      state.selected = [];
+      tempPoints = [];
+      solveConstraints();
+      render();
+    } catch (err) {
+      alert(`Failed to load JSON: ${err.message}`);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function resetDocument() {
+  state.entities = [];
+  state.dimensions = [];
+  state.constraints = [];
+  state.selected = [];
+  state.idCounter = 1;
+  tempPoints = [];
+  render();
+}
+
+function resizeCanvasToContainer() {
+  const wrap = document.querySelector('.canvas-wrap');
+  const rect = wrap.getBoundingClientRect();
+  canvas.width = Math.max(600, Math.floor(rect.width));
+  canvas.height = Math.max(400, Math.floor(rect.height));
+  render();
+}
+
+for (const btn of toolButtons) {
+  btn.addEventListener('click', () => setTool(btn.dataset.tool));
+}
+
+canvas.addEventListener('mousemove', (event) => {
+  mouse = toCanvasCoords(event);
+  if (tempPoints.length) render();
+});
+
+canvas.addEventListener('click', onCanvasClick);
+showGridEl.addEventListener('change', render);
+snapGridEl.addEventListener('change', render);
+applyConstraintBtn.addEventListener('click', () => {
+  applyConstraintFromSelection();
+  render();
+});
+
+newDocBtn.addEventListener('click', () => {
+  if (confirm('Clear current drawing?')) resetDocument();
+});
+
+saveBtn.addEventListener('click', handleSave);
+
+loadInput.addEventListener('change', (event) => {
+  const file = event.target.files?.[0];
+  if (file) handleLoadFile(file);
+  loadInput.value = '';
+});
+
+window.addEventListener('resize', resizeCanvasToContainer);
+
+resizeCanvasToContainer();
+render();
