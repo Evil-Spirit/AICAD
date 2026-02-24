@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D CAD Application</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>2D CAD Application</h1>
+        </header>
+        
+        <div class="toolbar">
+            <div class="tool-group">
+                <button id="selectTool" class="tool-btn active" data-tool="select">Select</button>
+                <button id="pointTool" class="tool-btn" data-tool="point">Point</button>
+                <button id="lineTool" class="tool-btn" data-tool="line">Line</button>
+                <button id="circleTool" class="tool-btn" data-tool="circle">Circle</button>
+                <button id="arcTool" class="tool-btn" data-tool="arc">Arc</button>
+                <button id="ellipseTool" class="tool-btn" data-tool="ellipse">Ellipse</button>
+                <button id="ellipticArcTool" class="tool-btn" data-tool="ellipticArc">Elliptic Arc</button>
+                <button id="dimensionTool" class="tool-btn" data-tool="dimension">Dimension</button>
+                <button id="constraintTool" class="tool-btn" data-tool="constraint">Constraint</button>
+            </div>
+            
+            <div class="tool-group">
+                <button id="saveBtn" class="action-btn">Save</button>
+                <button id="loadBtn" class="action-btn">Load</button>
+                <input type="file" id="fileInput" accept=".json" style="display: none;">
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <canvas id="drawingCanvas"></canvas>
+        </div>
+        
+        <div class="status-bar">
+            <span id="coordinates">X: 0, Y: 0</span>
+            <span id="currentTool">Current Tool: Select</span>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
